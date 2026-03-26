@@ -15,7 +15,7 @@
 <body class="bg-gray-100 p-4 md:p-8 font-sans">
   <div class="max-w-5xl mx-auto space-y-8">
     <div class="bg-[#081c15] text-white p-6 rounded-xl shadow-lg text-center">
-        <h1 class="text-3xl font-extrabold tracking-wide">38th Edition of The Links' BBO Teams League</h1>
+        <h1 class="text-3xl font-extrabold tracking-wide">38th Edition of The Links BBO Teams League</h1>
     </div>
 
     
@@ -869,13 +869,12 @@
             <tr class="bg-gray-200 text-gray-800 uppercase text-xs tracking-wider font-bold">
               <th class="p-3 border-r border-gray-300">Bd</th>
               <th class="p-3 border-r border-gray-300">Dir</th>
-              <th class="p-3 border-r border-gray-300">Opponents</th>
-              <th class="p-3 border-r border-gray-300">Contract</th>
-              <th class="p-3 border-r border-gray-300">By</th>
-              <th class="p-3 border-r border-gray-300">Tricks</th>
-              <th class="p-3 border-r border-gray-300">Lead</th>
-              <th class="p-3 border-r border-gray-300">Score</th>
-              <th class="p-3 bg-blue-100/50 text-blue-900">X-IMPs</th>
+              <th class="p-3 border-r border-gray-300 text-center">Opponents</th>
+              <th class="p-3 border-r border-gray-300 text-left">Contract</th>
+              <th class="p-3 border-r border-gray-300 text-left">Tks</th>
+              <th class="p-3 border-r border-gray-300 text-left">Lead</th>
+              <th class="p-3 border-r border-gray-300 text-left">Score</th>
+              <th class="p-3 bg-blue-100/50 text-blue-900 text-left">X-IMPs</th>
             </tr>
           </thead>
           <tbody id="pair-boards-body" class="bg-white"></tbody>
@@ -1040,6 +1039,105 @@
       
       document.getElementById('tab-' + tab).classList.add('active');
       document.getElementById('tab-btn-' + tab).className = 'px-8 py-3 transition bg-white text-blue-800 border-b-2 border-blue-600';
+    }
+
+    let pairScorecardContext = null;
+
+    function openPair(section, session, pairKey, useOverall) {
+        pairScorecardContext = { section, session, pairKey, useOverall };
+        renderPairScorecard();
+    }
+
+    function renderPairScorecard() {
+        const ctx = pairScorecardContext;
+        
+        const sectionSessions = dbSessions.filter(s => s.section === ctx.section);
+        if (sectionSessions.length === 0) return;
+
+        let pairObj = null;
+        let displaySessionStr = '';
+        let allBoards = [];
+
+        if (ctx.useOverall || !ctx.session) {
+            displaySessionStr = 'Overall Standings';
+            sectionSessions.forEach(sess => {
+                const pairInSess = sess.pairSummaries?.find(p => p.pairKey === ctx.pairKey) || Object.values(sess.pairsMap || {}).find(p => p.pairKey === ctx.pairKey);
+                if (pairInSess) {
+                   if(!pairObj) pairObj = { ...pairInSess };
+                   if(pairInSess.playedBoards) {
+                      allBoards.push(...pairInSess.playedBoards.map(b => ({ ...b, _session: sess.session })));
+                   }
+                }
+            });
+        } else {
+            displaySessionStr = ctx.session;
+            const sess = sectionSessions.find(s => String(s.session) === String(ctx.session));
+            if (sess) {
+                pairObj = sess.pairSummaries?.find(p => p.pairKey === ctx.pairKey) || Object.values(sess.pairsMap || {}).find(p => p.pairKey === ctx.pairKey);
+                if (pairObj && pairObj.playedBoards) {
+                   allBoards = pairObj.playedBoards.map(b => ({ ...b, _session: sess.session }));
+                }
+            }
+        }
+
+        if (!pairObj) return;
+
+        document.getElementById('pair-title').innerText = getPairName(pairObj.pairKey);
+        document.getElementById('pair-subtitle').innerText = 'Section ' + ctx.section + ' • ' + displaySessionStr;
+
+        let html = '';
+        
+        allBoards.sort((a,b) => {
+            const timeA = parseSessionDate(a._session);
+            const timeB = parseSessionDate(b._session);
+            if (timeA > 0 && timeB > 0 && timeA !== timeB) return timeB - timeA;
+            if (a._session !== b._session) return String(a._session).localeCompare(String(b._session));
+            if (a.half !== b.half) return Number(a.half) - Number(b.half);
+            return Number(a.boardNo) - Number(b.boardNo);
+        });
+
+        const halfCounts = {};
+        allBoards.forEach(b => {
+            const k = b._session + '-' + b.half;
+            halfCounts[k] = (halfCounts[k] || 0) + 1;
+        });
+
+        let currentSession = null;
+        let currentHalf = null;
+
+        allBoards.forEach((br, idx) => {
+            const isFirst = (br.half !== currentHalf || br._session !== currentSession);
+            if (isFirst) {
+                currentSession = br._session;
+                currentHalf = br.half;
+                html += '<tr class="bg-gray-300 font-bold border-y-2 border-gray-400">' +
+                    '<td colspan="8" class="p-2 text-center uppercase tracking-widest text-sm text-gray-800">' +
+                    (br._session ? br._session + ' - ' : '') + (currentHalf === 1 ? "1st Half" : "2nd Half") + '</td></tr>';
+            }
+
+            const bg = idx % 2 !== 0 ? 'bg-gray-50' : 'bg-white';
+            const xClass = br.pairXImps > 0 ? 'text-green-600' : (br.pairXImps < 0 ? 'text-red-600' : 'text-gray-700');
+            const opps = br.pairDirection === "N/S" ? getPairName(br.e + "+" + br.w) : getPairName(br.n + "+" + br.s);
+            
+            html += '<tr class="' + bg + ' border-b border-gray-200">' +
+                '<td class="p-3 font-bold">' + br.boardNo + '</td>' +
+                '<td class="p-3">' + br.pairDirection + '</td>';
+                
+            if (isFirst) {
+                const rSpan = halfCounts[br._session + '-' + br.half];
+                html += '<td rowspan="' + rSpan + '" class="p-3 align-middle text-center font-bold text-sm bg-gray-100/50 border-r border-l border-gray-200">' + opps + '</td>';
+            }
+
+            html += '<td class="p-3 font-mono font-bold text-left">' + formatBridge(br.contract + (br.declarer ? " by " + br.declarer : "")) + '</td>' +
+                '<td class="p-3 text-left">' + (br.tricks || "-") + '</td>' +
+                '<td class="p-3 text-left">' + formatBridge(br.lead) + '</td>' +
+                '<td class="p-3 font-bold text-left">' + (br.score || "-") + '</td>' +
+                '<td class="p-3 font-bold text-left ' + xClass + '">' + (br.pairXImps > 0 ? "+" : "") + Number(br.pairXImps).toFixed(2) + '</td>' +
+                '</tr>';
+        });
+
+        document.getElementById('pair-boards-body').innerHTML = html;
+        document.getElementById('pair-modal').classList.add('active');
     }
 
     // --- HTML CROSS-IMP TRAVELLER LOGIC ---
